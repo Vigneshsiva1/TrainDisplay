@@ -2,12 +2,57 @@ import board
 import neopixel
 from adafruit_pixel_framebuf import PixelFramebuffer
 import time
-import traindata
 import datetime
+import requests
+from datetime import datetime
+import os
+
+os.chdir("/home/pi/Programs/LavaLamp")
 
 # Pin information and board size
 pixel_pin = board.D18
 pixel_number = 192
+
+def get_schedule():
+    # API key for CTA check gmail for key
+    api_key = '8fceb40bfac243d581d2b5f5318dc127'
+    endpoint = 'http://lapi.transitchicago.com/api/1.0/ttarrivals.aspx'
+    params = {
+        'key': api_key,
+        'mapid': 40800,  # Sedgwick station ID
+        'outputType': 'json'
+    }
+
+    try:
+        # Make the API request
+        response = requests.get(endpoint, params=params)
+        data = response.json()
+        
+        # Extract relevant information from the response
+        if 'ctatt' in data and 'eta' in data['ctatt']:
+            sedgwick_trains = data['ctatt']['eta']
+            train_data_list = [{"ETA":'0',"Line":'0',"Destination":'0'}]
+            # Get information for the next few trains
+            for train in sedgwick_trains:
+                wait_time = train.get('arrT')
+                present_time = train.get('prdt')
+                arrival_time = datetime.strptime(wait_time, '%Y-%m-%dT%H:%M:%S')
+                current_time = datetime.strptime(present_time, '%Y-%m-%dT%H:%M:%S')
+                eta = arrival_time - current_time
+                line = train.get('rt')
+                destination = train.get('destNm')
+                #store stuff in train_data Dictionary
+                train_data = {"ETA": int((eta.seconds)/60), "Line": line,"Destination":destination}
+                train_data_list.append(train_data)
+                
+            return(train_data_list)
+        else:
+            print("No data available for trains at Sedgwick station.")
+            return(101)
+
+    except Exception as e:
+        print(f"An error occurred: {e}")
+        return(102)
 
 
 if __name__ == '__main__':
@@ -26,7 +71,7 @@ if __name__ == '__main__':
     orientation=0,
     rotation = 0
     )
-    train_data = traindata.get_schedule()
+    train_data = get_schedule()
     # Initialize counters and keys
     i = 0
     j = 0
@@ -36,7 +81,7 @@ if __name__ == '__main__':
         # Initialize string for messages
 
 
-
+        today = datetime.today()
         curr_timeStruct = time.localtime()
         curr_hour = curr_timeStruct.tm_hour
 
@@ -45,7 +90,7 @@ if __name__ == '__main__':
         if(curr_hour > 23 or curr_hour < 5):
             pixel_framebuf.fill(0x000000)
             pixel_framebuf.display()
-            print('Asleep')
+            ##print('Asleep')
             time.sleep(60)
             
         else:
@@ -56,8 +101,8 @@ if __name__ == '__main__':
                 PurpLoopMessage = "   Loop "
                 PurpKimballMessage = "   Kimball "
                 try:
-                    train_data = traindata.get_schedule()
-                    print('Api Call ')
+                    train_data = get_schedule()
+                    ##print('Api Call ')
                     #update Train messages
                     for train in train_data:
                         if((train['Destination']=='Loop')&(int(train['ETA'])>5)& (train['Line']=='Brn')):
@@ -72,9 +117,9 @@ if __name__ == '__main__':
                             
                             PurpLoopMessage += (str(train['ETA'] )+ "m ")
                     curr_min = curr_timeStruct.tm_min
-                    today = datetime.datetime.today()
+                    #today = datetime.datetime.today()
                 except:
-                    print("Issue with Api Call")
+                    ##print("Issue with Api Call")
                     BrwnLoopMessage = 'Refreshing '
                     PurpLoopMessage = 'Refreshing '
                     BrwnKimballMessage = 'Refreshing '
@@ -91,7 +136,7 @@ if __name__ == '__main__':
                 finalBrwnMessage = BrwnLoopMessage
                 finalPurpMessage = PurpLoopMessage
                 # check if purple line message is blank
-                if ('   L     '== finalPurpMessage):
+                if ('   Loop     '== finalPurpMessage):
                     pixel_framebuf.fill(0x000000)
                     printMessage = finalBrwnMessage[i: i+4]
                     pixel_framebuf.text(printMessage, 0, 0, 0xff2300)
@@ -138,7 +183,7 @@ if __name__ == '__main__':
                 finalBrwnMessage = BrwnLoopMessage +BrwnKimballMessage
                 finalPurpMessage = PurpLoopMessage + PurpKimballMessage
                 # check for no purple line trains
-                if ('   L   K     '  == finalPurpMessage):
+                if ('   Loop   Kimball     '  == finalPurpMessage):
                     pixel_framebuf.fill(0x000000)
                     printMessage = finalBrwnMessage[i: i+4]
                     pixel_framebuf.text(printMessage, 0, 0, 0xff2300)
